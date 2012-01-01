@@ -11,6 +11,7 @@
 #include <iarc_tf/Velocity.h>
 #include <obstacle_avoidance/Hokuyo.h>
 #include <eigen3/Eigen/Dense>
+#include <sensor_msgs/LaserScan.h>
 // ‰»Î
 /*
 Dp_pos quadrotorPos = Dp_pos(1.5,1.5,2),//Àƒ–˝“ÌŒª÷√
@@ -74,6 +75,7 @@ public:
 	float tarVy;
 	float tarX_ob;
 	float tarY_ob;
+	bool guidance_emergency;
 	enum VelState{NED,GROUND};
 	ros::NodeHandle nh;
 	ros::NodeHandle nh_param;
@@ -82,6 +84,7 @@ public:
 	ros::Subscriber quadrotorPosNED_sub;
 	ros::Subscriber quadrotorPosGround_sub;
 	ros::Subscriber hokuyoBody_sub;
+	ros::Subscriber guidance_distance_sub;
 	ros::ServiceServer TG_server;
 	ros::ServiceClient tf_client;
 	tf::TransformListener listener;
@@ -95,6 +98,7 @@ public:
 	bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res);
 	void quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg);
 	void quadrotorPosGroundCallback(const geometry_msgs::PointStamped::ConstPtr &msg);
+	void guidanceObstacleCallback(const sensor_msgs::LaserScanConstPtr& msg);
 	bool insideRec(float tx,float ty,float x1,float y1,float x2,float y2);
 	
 	// for obstacle avoidance

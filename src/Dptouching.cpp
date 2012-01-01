@@ -199,7 +199,9 @@ void DpTouching::initialize()
 	quadrotorPosGround_sub = nh.subscribe("ground_position",10, &DpTouching::quadrotorPosGroundCallback,this);
 	hokuyoBody_sub = nh.subscribe("/hokuyo/pillar_data",10, &DpTouching::hokuyo_dataCallback, this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
+	guidance_distance_sub = nh.subscribe("/guidance/ultrasonic", 1, &DpTouching::guidanceObstacleCallback, this);
 	avoidanceV = 0.5;
+	guidance_emergency = false;
 	if(!nh_param.getParam("xMax", xMax))xMax = 5.0;
 	if(!nh_param.getParam("yMax", yMax))yMax = 5.0;
 	if(!nh_param.getParam("cruiseVel", tarV))tarV = 0.5;
@@ -230,6 +232,13 @@ void DpTouching::hokuyo_dataCallback(const obstacle_avoidance::Hokuyo::ConstPtr 
 		obstacle_ranges[i] = msg->ranges[i];
 		obstacle_angles[i] = msg->angles[i];
 	}
+}
+void DpTouching::guidanceObstacleCallback(const sensor_msgs::LaserScanConstPtr& msg)
+{
+	if ((msg->intensities[1] > 0.0) && (msg->ranges[1] < 2) && (msg->ranges[1] > 0.5))
+		guidance_emergency = true;
+	else
+		guidance_emergency = false;
 }
 bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
 {
@@ -522,7 +531,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
 			res.flightCtrlDstz = 1.2*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
 			res.flightFlag = 0x90;
-			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			if(guidance_emergency == true ||((number_obstacle > 0) && (obstacle_ranges[0] < 3.0)))
 			{
 				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
 				res.flightCtrlDstx = tarVx;
