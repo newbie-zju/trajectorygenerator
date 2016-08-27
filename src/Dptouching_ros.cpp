@@ -5,6 +5,12 @@
 #include <dji_sdk/LocalPosition.h>
 #include "iarc_mission/TG.h"
 using namespace std;
+
+
+#define xMax 20.0						//场地范围#8.27
+#define yMax 20.0						//场地范围#8.27
+//xMin 和 yMin 为 0
+
 //输入
 /*
 Dp_pos quadrotorPos = Dp_pos(1.5,1.5,2),//四旋翼位置
@@ -18,7 +24,7 @@ dji_sdk::LocalPosition quadrotorPos;
 goal_detected::Pose3D irobotPos;
 geometry_msgs::Point32 outputPos;
 float tarX, tarY, tarZ;
-float dxy = 2.0;
+float tarVx, tarVy, tarV = 0.5;//tarV:巡航速度大小
 DpTouching DpTouch;
 void quadrotorPosCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
 {
@@ -41,74 +47,83 @@ bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::T
 	{
 		case CRUISE:	//TODO: here is not NED frame!!!
 			ROS_INFO("DpTouching: CRUISE");
-			tarZ = 1.8;	
-			if (insideRec(quadrotorPos.x,quadrotorPos.y,0,0,18,2))//外边
+			tarZ = 1.6;
+			if (insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形里面
 			{
-				tarX = quadrotorPos.x + dxy;
-				tarY = 1;
+				if(insideRec(quadrotorPos.x,quadrotorPos.y,0.15*xMax,0.15*yMax,0.85*xMax,0.85*yMax))
+				{
+					double theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
+					tarVx = cos(theta_center2quad)*tarV;
+					tarVy = sin(theta_center2quad)*tarV;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.85*xMax,0.15*yMax))
+				{
+					tarVx = tarV;
+					tarVy = 0;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.9*xMax,0.1*yMax,0.85*xMax,0.85*yMax))
+				{
+					tarVx = 0;
+					tarVy = tarV;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.9*xMax,0.85*yMax,0.15*xMax,0.9*yMax))
+				{
+					tarVx = -tarV;
+					tarVy = 0;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.15*xMax,0.15*yMax,0.1*xMax,0.9*yMax))
+				{
+					tarVx = 0;
+					tarVy = -tarV;
+				}
+				else
+				{
+					tarVx = 0;
+					tarVy = 0;
+				}
+
 			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,18,0,20,18))
+			else//在(0.1,0.1)(0.9,0.9)矩形外面
 			{
-				tarX = 19;
-				tarY = quadrotorPos.y + dxy;
+				double theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
+				tarVx = cos(theta_quad2center)*tarV;
+				tarVy = sin(theta_quad2center)*tarV;
 			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,2,18,20,20))
-			{
-				tarX = quadrotorPos.x - dxy;
-				tarY = 19;
-			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,0,2,2,20))
-			{
-				tarX = 1;
-				tarY = quadrotorPos.y - dxy;
-			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,2,2,10,10))//里边
-			{
-				tarX = quadrotorPos.x;
-				tarY = quadrotorPos.y - dxy;
-			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,10,2,18,10))
-			{
-				tarX = quadrotorPos.x + dxy;
-				tarY = quadrotorPos.y;
-			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,10,10,18,18))
-			{
-				tarX = quadrotorPos.x;
-				tarY = quadrotorPos.y + dxy;
-			}
-			else if (insideRec(quadrotorPos.x,quadrotorPos.y,2,10,10,18))
-			{
-				tarX = quadrotorPos.x - dxy;
-				tarY = quadrotorPos.y;
-			}
-			else//出边线
-			{
-				tarX = 10;
-				tarY = 10;
-			}
+			res.flightCtrlDstx = tarVx;
+			res.flightCtrlDsty = tarVy;
+			res.flightCtrlDstz = tarZ;
 			break;
 		case TRACK:
 			ROS_INFO("DpTouching: TRACK");
 			tarX = req.irobotPosNEDx + 0.5 * cos(req.theta);
 			tarY = req.irobotPosNEDy + 0.5 * sin(req.theta);
 			tarZ = 1.6;
+
+			DpTouch.getBeginPos(quadrotorPos.x,quadrotorPos.y,quadrotorPos.z);
+			DpTouch.getTargetPos(tarX,tarY,tarZ);
+			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPos.x,quadrotorPos.y,quadrotorPos.z,tarX,tarY,tarZ);
+			DpTouch.runMethod();
+			res.flightCtrlDstx = DpTouch.p_x[40];
+			res.flightCtrlDsty = DpTouch.p_y[40];
+			res.flightCtrlDstz = DpTouch.p_z[49];
 			break;
 		case APPROACH:
 			ROS_INFO("DpTouching: APPROACH");
 			tarX = req.irobotPosNEDx + 2.3 * cos(req.theta);
 			tarY = req.irobotPosNEDy + 2.3 * sin(req.theta);
 			tarZ = -0.5;
+
+			DpTouch.getBeginPos(quadrotorPos.x,quadrotorPos.y,quadrotorPos.z);
+			DpTouch.getTargetPos(tarX,tarY,tarZ);
+			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPos.x,quadrotorPos.y,quadrotorPos.z,tarX,tarY,tarZ);
+			DpTouch.runMethod();
+			res.flightCtrlDstx = DpTouch.p_x[40];
+			res.flightCtrlDsty = DpTouch.p_y[40];
+			res.flightCtrlDstz = DpTouch.p_z[49];
 			break;
 	}
-	DpTouch.getBeginPos(quadrotorPos.x,quadrotorPos.y,quadrotorPos.z);
-	DpTouch.getTargetPos(tarX,tarY,tarZ);
-	ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPos.x,quadrotorPos.y,quadrotorPos.z,tarX,tarY,tarZ);
-	DpTouch.runMethod();
-	res.flightCtrlDstx = DpTouch.p_x[40];
-	res.flightCtrlDsty = DpTouch.p_y[40];
-	res.flightCtrlDstz = DpTouch.p_z[49];
 	return true;
+
 }
 int main(int argc, char** argv)
 {
