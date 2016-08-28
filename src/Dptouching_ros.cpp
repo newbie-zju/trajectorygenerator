@@ -10,6 +10,9 @@ using namespace std;
 #define xMax 20.0						//场地范围#8.27
 #define yMax 20.0						//场地范围#8.27
 //xMin 和 yMin 为 0
+#define dxy 0.5				//偏移量#8.28
+#define tarV 0.5			//巡航速度大小#8.28
+
 
 //输入
 /*
@@ -24,7 +27,7 @@ dji_sdk::LocalPosition quadrotorPos;
 goal_detected::Pose3D irobotPos;
 geometry_msgs::Point32 outputPos;
 float tarX, tarY, tarZ;
-float tarVx, tarVy, tarV = 0.5;//tarV:巡航速度大小
+float tarVx, tarVy;
 DpTouching DpTouch;
 void quadrotorPosCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
 {
@@ -48,46 +51,57 @@ bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::T
 		case CRUISE:	//TODO: here is not NED frame!!!
 			ROS_INFO("DpTouching: CRUISE");
 			tarZ = 1.6;
-			if (insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形里面
+			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
 			{
-				if(insideRec(quadrotorPos.x,quadrotorPos.y,0.15*xMax,0.15*yMax,0.85*xMax,0.85*yMax))
+				float theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
+				tarVx = cos(theta_quad2center) * tarV;
+				tarVy = sin(theta_quad2center) * tarV;
+			}
+			else
+			{
+				if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.3*yMax,0.7*xMax,0.7*yMax))//B
 				{
-					double theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
-					tarVx = cos(theta_center2quad)*tarV;
-					tarVy = sin(theta_center2quad)*tarV;
+					float theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
+					tarVx = cos(theta_center2quad) * tarV;
+					tarVy = sin(theta_center2quad) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.85*xMax,0.15*yMax))
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.7*xMax,0.3*yMax,0.9*xMax,0.9*yMax))//C
 				{
-					tarVx = tarV;
-					tarVy = 0;
+					tarX = 0.8*xMax;
+					tarY = quadrotorPos.y - dxy;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.9*xMax,0.1*yMax,0.85*xMax,0.85*yMax))
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.1*yMax,0.9*xMax,0.3*yMax))//D
 				{
-					tarVx = 0;
-					tarVy = tarV;
+					tarX = quadrotorPos.x - dxy;
+					tarY = 0.2*yMax;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.9*xMax,0.85*yMax,0.15*xMax,0.9*yMax))
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.3*xMax,0.7*yMax))//E
 				{
-					tarVx = -tarV;
-					tarVy = 0;
+					tarX = 0.2*xMax;
+					tarY = quadrotorPos.y + dxy;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.15*xMax,0.15*yMax,0.1*xMax,0.9*yMax))
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.7*yMax,0.7*xMax,0.9*yMax))//F
 				{
-					tarVx = 0;
-					tarVy = -tarV;
+					tarX = quadrotorPos.x + dxy;
+					tarY = 0.8*yMax;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
 				}
 				else
 				{
 					tarVx = 0;
 					tarVy = 0;
 				}
-
-			}
-			else//在(0.1,0.1)(0.9,0.9)矩形外面
-			{
-				double theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
-				tarVx = cos(theta_quad2center)*tarV;
-				tarVy = sin(theta_quad2center)*tarV;
 			}
 			res.flightCtrlDstx = tarVx;
 			res.flightCtrlDsty = tarVy;
