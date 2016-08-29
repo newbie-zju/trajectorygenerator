@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   dji_sdk
   iarc_mission
   tf
+  iarc_tf
 )
 find_package(OpenCV REQUIRED)
 ## System dependencies are found with CMake's conventions

@@ -1,6 +1,28 @@
 #include "Dptouching.h"
 #include <math.h>
 
+DpTouching::DpTouching(ros::NodeHandle nh_):nh(nh_)
+{
+	initialize();	
+	ros::Rate rate(30.0);
+	while(ros::ok())
+	{
+		ros::spinOnce();
+		tf::StampedTransform transform;
+		try{
+			listener.waitForTransform("/ground","/body",ros::Time(0),ros::Duration(10.0));    
+			listener.lookupTransform("/ground","/body",ros::Time(0),transform);
+			quadrotorPos.x = transform.getOrigin().x();
+			quadrotorPos.y = transform.getOrigin().y();
+			//cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
+		}
+		catch(tf::TransformException &ex){
+			ROS_ERROR("%s",ex.what());
+		}
+		rate.sleep();
+	}
+}
+
 void DpTouching::getBeginPos(float x, float y, float z)
 {
 	q = vector<Mat>(DP_N, Mat::zeros(12, 1, CV_32F));
@@ -26,23 +48,6 @@ void DpTouching::getTargetPos(float x, float y, float z)
 
 void DpTouching::runMethod(void)
 {
-	////判断飞行器状态
-	//switch (state)
-	//{
-	//case CRUISE:
-	//	q_ugv.at<float>(2,0) = cruise_height;
-	//	break;
-	//case TRACK:
-	//	q_ugv.at<float>(2,0) = track_height;
-	//	break;
-	//case APPROACH:
-	//	q_ugv.at<float>(2,0) = approach_height;
-	//	break;
-	//default:
-	//	break;
-	//}
-
-	//cout<<q_ugv<<endl;
 
 	Mat A = Mat::eye(12, 12, CV_32F);
 	for (int i = 0;i<12;i++)
@@ -189,7 +194,7 @@ void DpTouching::runMethod(void)
 	}
 }
 
-bool insideRec(float tx,float ty,float x1,float y1,float x2,float y2)
+bool DpTouching::insideRec(float tx,float ty,float x1,float y1,float x2,float y2)
 {
 	if ((tx-x1)*(tx-x2)<0&&(ty-y1)*(ty-y2)<0)
 	{
@@ -199,4 +204,134 @@ bool insideRec(float tx,float ty,float x1,float y1,float x2,float y2)
 	{
 		return false;
 	}
+}
+
+void DpTouching::initialize()
+{
+	dT = 0.1;
+	TG_server = nh.advertiseService("/TG/TG_service", &DpTouching::calculateTrajectoryCallback, this);
+	quadrotorPosNED_sub = nh.subscribe("/dji_sdk/local_position", 10, &DpTouching::quadrotorPosNEDCallback, this);
+	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
+}
+
+void DpTouching::quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
+{
+	quadrotorPosNED.x = msg->x;
+	quadrotorPosNED.y = msg->y;
+	quadrotorPosNED.z = msg->z;
+}
+
+bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
+{
+	switch(req.quadrotorState)
+	{
+		case CRUISE:	//TODO: here is not NED frame!!!
+		{
+			//ros::ServiceClient tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_client");
+			ROS_INFO("DpTouching: CRUISE");
+			tarZ = 1.6;
+			cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
+			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
+			{
+				float theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
+				tarVx = cos(theta_quad2center) * tarV;
+				tarVy = sin(theta_quad2center) * tarV;
+			}
+			else
+			{
+				if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.3*yMax,0.7*xMax,0.7*yMax))//B
+				{
+					float theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
+					tarVx = cos(theta_center2quad) * tarV;
+					tarVy = sin(theta_center2quad) * tarV;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.7*xMax,0.3*yMax,0.9*xMax,0.9*yMax))//C
+				{
+					tarX = 0.8*xMax;
+					tarY = quadrotorPos.y - dxy;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.1*yMax,0.9*xMax,0.3*yMax))//D
+				{
+					tarX = quadrotorPos.x - dxy;
+					tarY = 0.2*yMax;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.3*xMax,0.7*yMax))//E
+				{
+					tarX = 0.2*xMax;
+					tarY = quadrotorPos.y + dxy;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
+				}
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.7*yMax,0.7*xMax,0.9*yMax))//F
+				{
+					tarX = quadrotorPos.x + dxy;
+					tarY = 0.8*yMax;
+					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
+					tarVx = cos(theta_quad2tar) * tarV;
+					tarVy = sin(theta_quad2tar) * tarV;
+				}
+				else
+				{
+					tarVx = 0;
+					tarVy = 0;
+				}
+			}
+			iarc_tf::Velocity srv;
+			srv.request.velocityFrame = GROUND;
+			srv.request.velocityX = tarVx;
+			srv.request.velocityY = tarVy;
+			ROS_ERROR("tarVx = %f",tarVx);
+			if(tf_client.call(srv))
+			{
+				res.flightCtrlDstx = srv.response.velocityXRes;
+				res.flightCtrlDsty = srv.response.velocityYRes;
+				res.flightCtrlDstz = tarZ;
+			}
+			else
+				ROS_ERROR("Dptouching: tf call failed......");			
+			break;
+		}
+			
+		case TRACK:
+		{
+			ROS_INFO("DpTouching: TRACK");
+			tarX = req.irobotPosNEDx + 0.5 * cos(req.theta);
+			tarY = req.irobotPosNEDy + 0.5 * sin(req.theta);
+			tarZ = 1.6;
+
+			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
+			getTargetPos(tarX,tarY,tarZ);
+			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
+			runMethod();
+			res.flightCtrlDstx = p_x[40];
+			res.flightCtrlDsty = p_y[40];
+			res.flightCtrlDstz = p_z[49];
+			break;
+		}
+		case APPROACH:
+		{
+			ROS_INFO("DpTouching: APPROACH");
+			tarX = req.irobotPosNEDx + 2.3 * cos(req.theta);
+			tarY = req.irobotPosNEDy + 2.3 * sin(req.theta);
+			tarZ = -0.5;
+
+			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
+			getTargetPos(tarX,tarY,tarZ);
+			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
+			runMethod();
+			res.flightCtrlDstx = p_x[40];
+			res.flightCtrlDsty = p_y[40];
+			res.flightCtrlDstz = p_z[49];
+			break;
+		}
+	}
+	return true;
+
 }
