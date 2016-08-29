@@ -24,20 +24,21 @@ float irobotDir = 0;//小车方向
 Dp_pos outputPos;//输出位置
 */
 //DPstate quadrotorState = APPROACH;//四旋翼状态
+dji_sdk::LocalPosition quadrotorPosNED;
 dji_sdk::LocalPosition quadrotorPos;
 goal_detected::Pose3D irobotPos;
 geometry_msgs::Point32 outputPos;
 float tarX, tarY, tarZ;
 float tarVx, tarVy;
 DpTouching DpTouch;
-/*
-void quadrotorPosCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
+
+void quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
 {
-	quadrotorPos.x = msg->x;
-	quadrotorPos.y = msg->y;
-	quadrotorPos.z = msg->z;
+	quadrotorPosNED.x = msg->x;
+	quadrotorPosNED.y = msg->y;
+	quadrotorPosNED.z = msg->z;
 }
-*/
+
 /*
 void irobotPosCallback(const goal_detected::Pose3DConstPtr &msg)
 {
@@ -116,9 +117,9 @@ bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::T
 			tarY = req.irobotPosNEDy + 0.5 * sin(req.theta);
 			tarZ = 1.6;
 
-			DpTouch.getBeginPos(quadrotorPos.x,quadrotorPos.y,quadrotorPos.z);
+			DpTouch.getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			DpTouch.getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPos.x,quadrotorPos.y,quadrotorPos.z,tarX,tarY,tarZ);
+			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
 			DpTouch.runMethod();
 			res.flightCtrlDstx = DpTouch.p_x[40];
 			res.flightCtrlDsty = DpTouch.p_y[40];
@@ -130,9 +131,9 @@ bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::T
 			tarY = req.irobotPosNEDy + 2.3 * sin(req.theta);
 			tarZ = -0.5;
 
-			DpTouch.getBeginPos(quadrotorPos.x,quadrotorPos.y,quadrotorPos.z);
+			DpTouch.getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			DpTouch.getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPos.x,quadrotorPos.y,quadrotorPos.z,tarX,tarY,tarZ);
+			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
 			DpTouch.runMethod();
 			res.flightCtrlDstx = DpTouch.p_x[40];
 			res.flightCtrlDsty = DpTouch.p_y[40];
@@ -146,7 +147,7 @@ int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "Dptouching_node");
 	ros::NodeHandle nh;
-	//ros::Subscriber quadrotorPos_sub = nh.subscribe("/dji_sdk/local_position", 10, quadrotorPosCallback);
+	ros::Subscriber quadrotorPosNED_sub = nh.subscribe("/dji_sdk/local_position", 10, quadrotorPosNEDCallback);
 	//ros::Subscriber irobotPos_sub = nh.subscribe("/goal_detected/goal_pose", 10, irobotPosCallback);
 	//ros::Publisher outputPos_pub = nh.advertise<geometry_msgs::Point32>("/TG/flight_ctrl_dst",10);
 	ros::ServiceServer TG_server = nh.advertiseService("/TG/TG_service", calculateTrajectoryCallback);
