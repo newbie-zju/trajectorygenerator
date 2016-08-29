@@ -4,6 +4,9 @@
 #include <goal_detected/Pose3D.h>
 #include <dji_sdk/LocalPosition.h>
 #include "iarc_mission/TG.h"
+#include <tf/transform_listener.h>
+#include <sys/socket.h>
+
 using namespace std;
 // ‰»Î
 /*
@@ -19,13 +22,16 @@ goal_detected::Pose3D irobotPos;
 geometry_msgs::Point32 outputPos;
 float tarX, tarY, tarZ;
 float dxy = 2.0;
+bool transformState;
 DpTouching DpTouch;
+/*
 void quadrotorPosCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
 {
 	quadrotorPos.x = msg->x;
 	quadrotorPos.y = msg->y;
 	quadrotorPos.z = msg->z;
 }
+*/
 /*
 void irobotPosCallback(const goal_detected::Pose3DConstPtr &msg)
 {
@@ -37,12 +43,13 @@ void irobotPosCallback(const goal_detected::Pose3DConstPtr &msg)
 */
 bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
 {
+	
 	switch(req.quadrotorState)
 	{
 		case CRUISE:	//TODO: here is not NED frame!!!
 			ROS_INFO("DpTouching: CRUISE");
 			tarZ = 1.8;	
-			if (insideRec(quadrotorPos.x,quadrotorPos.y,0,0,18,2))//Õ‚±ﬂ
+			if (insideRec(quadrotorPos.x,quadrotorPos.y,0,0,18,2))//outside
 			{
 				tarX = quadrotorPos.x + dxy;
 				tarY = 1;
@@ -114,10 +121,31 @@ int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "Dptouching_node");
 	ros::NodeHandle nh;
-	ros::Subscriber quadrotorPos_sub = nh.subscribe("/dji_sdk/local_position", 10, quadrotorPosCallback);
+	//ros::Subscriber quadrotorPos_sub = nh.subscribe("/dji_sdk/local_position", 10, quadrotorPosCallback);
 	//ros::Subscriber irobotPos_sub = nh.subscribe("/goal_detected/goal_pose", 10, irobotPosCallback);
 	//ros::Publisher outputPos_pub = nh.advertise<geometry_msgs::Point32>("/TG/flight_ctrl_dst",10);
 	ros::ServiceServer TG_server = nh.advertiseService("/TG/TG_service", calculateTrajectoryCallback);
-	ros::spin();
+	
+	tf::TransformListener listener;
+	ros::Rate rate(10.0);
+	
+	
+	while(ros::ok()){
+	        //ros::spinOnce();
+		tf::StampedTransform transform;
+		try{
+			listener.waitForTransform("/body","/ground",ros::Time(0),ros::Duration(10.0));    
+			listener.lookupTransform("/body","/ground",ros::Time(0),transform);
+			quadrotorPos.x = transform.getOrigin().x();
+			quadrotorPos.y = transform.getOrigin().y();
+			
+			cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
+		}
+		catch(tf::TransformException &ex){
+			ROS_ERROR("%s",ex.what());
+		}
+		rate.sleep();
+	}
+	
 	return 0;
 }
