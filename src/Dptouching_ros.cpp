@@ -13,5 +13,6 @@ int main(int argc, char** argv)
 	ros::init(argc, argv, "Dptouching_node");
 	ros::NodeHandle nh_;
 	DpTouching CDpTouching(nh_);
+	ros::spin();
 	return 0;
 }

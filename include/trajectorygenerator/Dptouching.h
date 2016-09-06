@@ -18,8 +18,8 @@ float irobotDir = 0;//小车方向
 Dp_pos outputPos;//输出位置
 */
 //DPstate quadrotorState = APPROACH;//四旋翼状态
-#define xMax 20.0						//场地范围#8.27
-#define yMax 20.0						//场地范围#8.27
+#define xMax 5.0						//场地范围#8.27
+#define yMax 5.0						//场地范围#8.27
 //xMin 和 yMin 为 0
 #define dxy 0.5				//偏移量#8.28
 #define tarV 0.5			//巡航速度大小#8.28
@@ -75,6 +75,7 @@ public:
 	//默认构造函数
 	DpTouching(ros::NodeHandle nh_);
 	ros::Subscriber quadrotorPosNED_sub;
+	ros::Subscriber quadrotorPosGround_sub;
 	ros::ServiceServer TG_server;
 	ros::ServiceClient tf_client;
 	tf::TransformListener listener;
@@ -87,6 +88,7 @@ public:
 	void initialize();
 	bool calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res);
 	void quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg);
+	void quadrotorPosGroundCallback(const geometry_msgs::Point::ConstPtr &msg);
 	bool insideRec(float tx,float ty,float x1,float y1,float x2,float y2);
 };
 

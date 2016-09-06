@@ -1,26 +1,26 @@
 #include "Dptouching.h"
 #include <math.h>
-
+using namespace std;
 DpTouching::DpTouching(ros::NodeHandle nh_):nh(nh_)
 {
-	initialize();	
-	ros::Rate rate(30.0);
-	while(ros::ok())
-	{
-		ros::spinOnce();
-		tf::StampedTransform transform;
-		try{
-			listener.waitForTransform("/ground","/body",ros::Time(0),ros::Duration(10.0));    
-			listener.lookupTransform("/ground","/body",ros::Time(0),transform);
-			quadrotorPos.x = transform.getOrigin().x();
-			quadrotorPos.y = transform.getOrigin().y();
-			//cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
-		}
-		catch(tf::TransformException &ex){
-			ROS_ERROR("%s",ex.what());
-		}
-		rate.sleep();
-	}
+	initialize();
+// 	ros::Rate rate(30.0);
+// 	while(ros::ok())
+// 	{
+// 		ros::spinOnce();
+// 		tf::StampedTransform transform;
+// 		try{
+// 			listener.waitForTransform("/ground","/body",ros::Time(0),ros::Duration(10.0));    
+// 			listener.lookupTransform("/ground","/body",ros::Time(0),transform);
+// 			quadrotorPos.x = transform.getOrigin().x();
+// 			quadrotorPos.y = transform.getOrigin().y();
+// 			//cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
+// 		}
+// 		catch(tf::TransformException &ex){
+// 			ROS_ERROR("%s",ex.what());
+// 		}
+// 		rate.sleep();
+// 	}
 }
 
 void DpTouching::getBeginPos(float x, float y, float z)
@@ -211,7 +211,9 @@ void DpTouching::initialize()
 	dT = 0.1;
 	TG_server = nh.advertiseService("/TG/TG_service", &DpTouching::calculateTrajectoryCallback, this);
 	quadrotorPosNED_sub = nh.subscribe("/dji_sdk/local_position", 10, &DpTouching::quadrotorPosNEDCallback, this);
+	quadrotorPosGround_sub = nh.subscribe("ground_position",10, &DpTouching::quadrotorPosGroundCallback,this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
+        
 }
 
 void DpTouching::quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
@@ -221,6 +223,12 @@ void DpTouching::quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr 
 	quadrotorPosNED.z = msg->z;
 }
 
+void DpTouching::quadrotorPosGroundCallback(const geometry_msgs::PointConstPtr& msg)
+{
+	quadrotorPos.x = msg->x;
+	quadrotorPos.y = msg->y;
+}
+
 bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
 {
 	switch(req.quadrotorState)
@@ -228,7 +236,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 		case CRUISE:	//TODO: here is not NED frame!!!
 		{
 			//ros::ServiceClient tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_client");
-			ROS_INFO("DpTouching: CRUISE");
+			//ROS_INFO("DpTouching: CRUISE");
 			tarZ = 1.6;
 			cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
 			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
@@ -279,15 +287,25 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 				}
 				else
 				{
-					tarVx = 0;
-					tarVy = 0;
+					tarVx = 0.1;
+					tarVy = 0.2;
 				}
 			}
+			
+			/*
+			//--test-------
+			float theta_quad2center = atan2((0-quadrotorPos.y),(0-quadrotorPos.x));//四旋翼指向场地中心的向量角度
+			tarVx = cos(theta_quad2center) * tarV;
+			tarVy = sin(theta_quad2center) * tarV;
+			//---end--------
+			*/
+			
+			
 			iarc_tf::Velocity srv;
 			srv.request.velocityFrame = GROUND;
 			srv.request.velocityX = tarVx;
 			srv.request.velocityY = tarVy;
-			ROS_ERROR("tarVx = %f",tarVx);
+			//ROS_ERROR("tarVx = %f",tarVx);
 			if(tf_client.call(srv))
 			{
 				res.flightCtrlDstx = srv.response.velocityXRes;
