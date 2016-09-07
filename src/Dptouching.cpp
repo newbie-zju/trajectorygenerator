@@ -237,9 +237,11 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 		{
 			//ros::ServiceClient tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_client");
 			//ROS_INFO("DpTouching: CRUISE");
+			if(cruiseStep>(yMax*0.4))
+				cruiseStep = yMax*0.4;
 			tarZ = 1.6;
 			cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
-			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
+			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax-cruiseStep))//在(0.1,0.1)(0.9,0.9)矩形外面//A
 			{
 				float theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
 				tarVx = cos(theta_quad2center) * tarV;
@@ -247,13 +249,13 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			}
 			else
 			{
-				if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.3*yMax,0.7*xMax,0.7*yMax))//B
+				if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.3*yMax,0.7*xMax,0.7*yMax-cruiseStep))//B
 				{
 					float theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
 					tarVx = cos(theta_center2quad) * tarV;
 					tarVy = sin(theta_center2quad) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.7*xMax,0.3*yMax,0.9*xMax,0.9*yMax))//C
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.7*xMax,0.3*yMax,0.9*xMax,0.9*yMax-cruiseStep))//C
 				{
 					tarX = 0.8*xMax;
 					tarY = quadrotorPos.y - dxy;
@@ -269,7 +271,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					tarVx = cos(theta_quad2tar) * tarV;
 					tarVy = sin(theta_quad2tar) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.3*xMax,0.7*yMax))//E
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.3*xMax,0.7*yMax-cruiseStep))//E
 				{
 					tarX = 0.2*xMax;
 					tarY = quadrotorPos.y + dxy;
@@ -277,7 +279,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					tarVx = cos(theta_quad2tar) * tarV;
 					tarVy = sin(theta_quad2tar) * tarV;
 				}
-				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.7*yMax,0.7*xMax,0.9*yMax))//F
+				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.7*yMax-cruiseStep,0.7*xMax,0.9*yMax-cruiseStep))//F
 				{
 					tarX = quadrotorPos.x + dxy;
 					tarY = 0.8*yMax;

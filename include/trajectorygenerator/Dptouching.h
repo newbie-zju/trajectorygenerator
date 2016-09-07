@@ -65,6 +65,7 @@ public:
 	dji_sdk::LocalPosition quadrotorPos;
 	goal_detected::Pose3D irobotPos;
 	geometry_msgs::Point32 outputPos;
+	int cruiseStep;//
 	float tarX;
 	float tarY;
 	float tarZ;
