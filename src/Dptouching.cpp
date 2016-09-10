@@ -238,7 +238,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			//ros::ServiceClient tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_client");
 			//ROS_INFO("DpTouching: CRUISE");
 			tarZ = 1.6;
-			cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
+			ROS_INFO_THROTTLE(0.2, "posGround:%4.2f, %4.2f",quadrotorPos.x,quadrotorPos.y);
 			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
 			{
 				float theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
@@ -326,7 +326,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 
 			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
+			ROS_INFO("quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
 			runMethod();
 			res.flightCtrlDstx = p_x[40];
 			res.flightCtrlDsty = p_y[40];
@@ -342,8 +342,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 
 			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO("%6.3f,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
-			runMethod();
+			ROS_INFO("quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);runMethod();
 			res.flightCtrlDstx = p_x[40];
 			res.flightCtrlDsty = p_y[40];
 			res.flightCtrlDstz = p_z[49];
