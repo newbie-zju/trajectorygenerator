@@ -9,6 +9,8 @@
 #include <dji_sdk/LocalPosition.h>
 #include "iarc_mission/TG.h"
 #include <iarc_tf/Velocity.h>
+#include <obstacle_avoidance/Hokuyo.h>
+#include <eigen3/Eigen/Dense>
 //输入
 /*
 Dp_pos quadrotorPos = Dp_pos(1.5,1.5,2),//四旋翼位置
@@ -18,11 +20,11 @@ float irobotDir = 0;//小车方向
 Dp_pos outputPos;//输出位置
 */
 //DPstate quadrotorState = APPROACH;//四旋翼状态
-#define xMax 5.0						//场地范围#8.27
-#define yMax 5.0						//场地范围#8.27
+#define xMax 20.0						//场地范围#8.27
+#define yMax 20.0						//场地范围#8.27
 //xMin 和 yMin 为 0
 #define dxy 0.5				//偏移量#8.28
-#define tarV 0.5			//巡航速度大小#8.28
+#define tarV 1.0			//巡航速度大小#8.28
 
 
 using namespace cv;
@@ -70,12 +72,16 @@ public:
 	float tarZ;
 	float tarVx;
 	float tarVy;
+	float tarX_ob;
+	float tarY_ob;
 	enum VelState{NED,GROUND};
 	ros::NodeHandle nh;
+	ros::NodeHandle nh_param;
 	//默认构造函数
 	DpTouching(ros::NodeHandle nh_);
 	ros::Subscriber quadrotorPosNED_sub;
 	ros::Subscriber quadrotorPosGround_sub;
+	ros::Subscriber hokuyoBody_sub;
 	ros::ServiceServer TG_server;
 	ros::ServiceClient tf_client;
 	tf::TransformListener listener;
@@ -90,6 +96,28 @@ public:
 	void quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg);
 	void quadrotorPosGroundCallback(const geometry_msgs::Point::ConstPtr &msg);
 	bool insideRec(float tx,float ty,float x1,float y1,float x2,float y2);
+	
+	// for obstacle avoidance
+private:
+	Eigen::Vector2f attractiveVec;
+	Eigen::Vector2f repulsiveVec;	//repulsiveVec(0) = range; repulsiveVec(1) = ang;
+	Eigen::Vector2f attractiveForce;
+	Eigen::Vector2f repulsiveForce;
+	Eigen::Vector2f joinForce;		//joinForce = attractiveForce + repulsiveForce;
+public:
+	int number_obstacle;   
+	double Kr;
+	float avoidanceV;
+	double fattractive;
+	float obstacle_ranges[5] = {0.0,0.0,0.0,0.0,0.0};
+	float obstacle_angles[5] = {0.0,0.0,0.0,0.0,0.0};
+	void setAttVec(Eigen::Vector2f attVec);	//repVec(0) = range; repVec(1) = ang;
+	void setRepVec(Eigen::Vector2f repVec);
+	void getForce(Eigen::Vector2f &attForce, Eigen::Vector2f &repForce);
+	void calcAttractiveForce();
+	void calcRepulsiceForce();
+	void hokuyo_dataCallback(const obstacle_avoidance::Hokuyo::ConstPtr &msg);
+	void doAvoidance(Eigen::Vector2f attVec);
 };
 
 

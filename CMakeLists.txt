@@ -4,6 +4,7 @@ project(trajectorygenerator)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
+find_package(Eigen3 REQUIRED)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
@@ -14,8 +15,10 @@ find_package(catkin REQUIRED COMPONENTS
   iarc_mission
   tf
   iarc_tf
+  obstacle_avoidance
 )
 find_package(OpenCV REQUIRED)
+set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 

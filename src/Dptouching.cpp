@@ -1,26 +1,9 @@
 #include "Dptouching.h"
 #include <math.h>
 using namespace std;
-DpTouching::DpTouching(ros::NodeHandle nh_):nh(nh_)
+DpTouching::DpTouching(ros::NodeHandle nh_):nh(nh_),nh_param("~")
 {
 	initialize();
-// 	ros::Rate rate(30.0);
-// 	while(ros::ok())
-// 	{
-// 		ros::spinOnce();
-// 		tf::StampedTransform transform;
-// 		try{
-// 			listener.waitForTransform("/ground","/body",ros::Time(0),ros::Duration(10.0));    
-// 			listener.lookupTransform("/ground","/body",ros::Time(0),transform);
-// 			quadrotorPos.x = transform.getOrigin().x();
-// 			quadrotorPos.y = transform.getOrigin().y();
-// 			//cout << "Current position:(" << quadrotorPos.x << "," << quadrotorPos.y << ")" << endl;
-// 		}
-// 		catch(tf::TransformException &ex){
-// 			ROS_ERROR("%s",ex.what());
-// 		}
-// 		rate.sleep();
-// 	}
 }
 
 void DpTouching::getBeginPos(float x, float y, float z)
@@ -212,8 +195,12 @@ void DpTouching::initialize()
 	TG_server = nh.advertiseService("/TG/TG_service", &DpTouching::calculateTrajectoryCallback, this);
 	quadrotorPosNED_sub = nh.subscribe("/dji_sdk/local_position", 10, &DpTouching::quadrotorPosNEDCallback, this);
 	quadrotorPosGround_sub = nh.subscribe("ground_position",10, &DpTouching::quadrotorPosGroundCallback,this);
+	hokuyoBody_sub = nh.subscribe("/hokuyo/obstacle_data",10, &DpTouching::hokuyo_dataCallback, this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
-        
+	avoidanceV = 1.0;
+	if(!nh_param.getParam("Kr", Kr))Kr = 2.25;
+	if(!nh_param.getParam("fattractive", fattractive))fattractive = 2.0;
+	number_obstacle = 0;
 }
 
 void DpTouching::quadrotorPosNEDCallback(const dji_sdk::LocalPosition::ConstPtr &msg)
@@ -229,21 +216,32 @@ void DpTouching::quadrotorPosGroundCallback(const geometry_msgs::PointConstPtr& 
 	quadrotorPos.y = msg->y;
 }
 
+void DpTouching::hokuyo_dataCallback(const obstacle_avoidance::Hokuyo::ConstPtr &msg)
+{
+	number_obstacle = msg->number;
+	//ROS_INFO_THROTTLE(0.3,"DP: %3.1f,%3.1f",msg->ranges[0],msg->angles[0]);
+	for(int i = 0; i < number_obstacle; i++)
+	{
+		obstacle_ranges[i] = msg->ranges[i];
+		obstacle_angles[i] = msg->angles[i];
+	}
+}
 bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
 {
+	ros::spinOnce();
 	switch(req.quadrotorState)
 	{
-		case CRUISE:	//TODO: here is not NED frame!!!
+		case CRUISE:
 		{
-			//ros::ServiceClient tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_client");
-			//ROS_INFO("DpTouching: CRUISE");
 			tarZ = 1.6;
-			ROS_INFO_THROTTLE(0.2, "posGround:%4.2f, %4.2f",quadrotorPos.x,quadrotorPos.y);
+			ROS_INFO_THROTTLE(0.2, "CRUISE:posGround:%4.2f, %4.2f",quadrotorPos.x,quadrotorPos.y);
 			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
 			{
 				float theta_quad2center = atan2((yMax/2-quadrotorPos.y),(xMax/2-quadrotorPos.x));//四旋翼指向场地中心的向量角度
 				tarVx = cos(theta_quad2center) * tarV;
 				tarVy = sin(theta_quad2center) * tarV;
+				tarX_ob = 0.5*xMax;
+				tarY_ob = 0.5*yMax;
 			}
 			else
 			{
@@ -252,6 +250,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					float theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
 					tarVx = cos(theta_center2quad) * tarV;
 					tarVy = sin(theta_center2quad) * tarV;
+					tarX_ob = tarVx;
+					tarY_ob = tarVy;
 				}
 				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.7*xMax,0.3*yMax,0.9*xMax,0.9*yMax))//C
 				{
@@ -260,6 +260,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
 					tarVx = cos(theta_quad2tar) * tarV;
 					tarVy = sin(theta_quad2tar) * tarV;
+					tarX_ob = 0.8*xMax;
+					tarY_ob = 0.1*yMax;
 				}
 				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.3*xMax,0.1*yMax,0.9*xMax,0.3*yMax))//D
 				{
@@ -268,6 +270,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
 					tarVx = cos(theta_quad2tar) * tarV;
 					tarVy = sin(theta_quad2tar) * tarV;
+					tarX_ob = 0.1*xMax;
+					tarY_ob = 0.2*yMax;
 				}
 				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.3*xMax,0.7*yMax))//E
 				{
@@ -276,6 +280,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
 					tarVx = cos(theta_quad2tar) * tarV;
 					tarVy = sin(theta_quad2tar) * tarV;
+					tarX_ob = 0.2*xMax;
+					tarY_ob = 0.9*yMax;
 				}
 				else if(insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.7*yMax,0.7*xMax,0.9*yMax))//F
 				{
@@ -284,6 +290,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
 					tarVx = cos(theta_quad2tar) * tarV;
 					tarVy = sin(theta_quad2tar) * tarV;
+					tarX_ob = 0.9*xMax;
+					tarY_ob = 0.8*yMax;
 				}
 				else
 				{
@@ -291,16 +299,13 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					tarVy = 0.2;
 				}
 			}
-			
 			/*
 			//--test-------
 			float theta_quad2center = atan2((0-quadrotorPos.y),(0-quadrotorPos.x));//四旋翼指向场地中心的向量角度
 			tarVx = cos(theta_quad2center) * tarV;
 			tarVy = sin(theta_quad2center) * tarV;
 			//---end--------
-			*/
-			
-			
+			*/			
 			iarc_tf::Velocity srv;
 			srv.request.velocityFrame = GROUND;
 			srv.request.velocityX = tarVx;
@@ -311,44 +316,156 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 				res.flightCtrlDstx = srv.response.velocityXRes;
 				res.flightCtrlDsty = srv.response.velocityYRes;
 				res.flightCtrlDstz = tarZ;
+				res.flightFlag = 0x50;
 			}
 			else
-				ROS_ERROR("Dptouching: tf call failed......");			
+				ROS_ERROR("Dptouching: tf call failed......");
+			// has NED track vec, then if has obstacle:
+			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				doAvoidance(Eigen::Vector2f(res.flightCtrlDstx, res.flightCtrlDsty));
+				res.flightCtrlDstx = tarVx;
+				res.flightCtrlDsty = tarVy;
+				res.flightFlag = 0x50;
+			}
+			
 			break;
 		}
 			
 		case TRACK:
 		{
-			ROS_INFO("DpTouching: TRACK");
+			//ROS_INFO("DpTouching: TRACK");
 			tarX = req.irobotPosNEDx + 0.5 * cos(req.theta);
 			tarY = req.irobotPosNEDy + 0.5 * sin(req.theta);
 			tarZ = 1.6;
 
 			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO("quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
-			runMethod();
-			res.flightCtrlDstx = p_x[40];
-			res.flightCtrlDsty = p_y[40];
-			res.flightCtrlDstz = p_z[49];
+			ROS_INFO_THROTTLE(0.2, "TRACK:quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
+// 			runMethod();
+// 			res.flightCtrlDstx = p_x[40];
+// 			res.flightCtrlDsty = p_y[40];
+// 			res.flightCtrlDstz = p_z[49];
+			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
+			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
+			res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
+			ROS_INFO_THROTTLE(0.2,"TRACK: dp_x=%4.2f,dp_y=%4.2f",res.flightCtrlDstx,res.flightCtrlDsty);
+			res.flightFlag = 0x90;
+			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
+				res.flightCtrlDstx = tarVx;
+				res.flightCtrlDsty = tarVy;
+				res.flightFlag = 0x50;
+			}
+			
 			break;
 		}
 		case APPROACH:
 		{
-			ROS_INFO("DpTouching: APPROACH");
+			//ROS_INFO("DpTouching: APPROACH");
 			tarX = req.irobotPosNEDx + 2.3 * cos(req.theta);
 			tarY = req.irobotPosNEDy + 2.3 * sin(req.theta);
 			tarZ = -0.5;
 
 			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO("quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);runMethod();
-			res.flightCtrlDstx = p_x[40];
-			res.flightCtrlDsty = p_y[40];
-			res.flightCtrlDstz = p_z[49];
+			ROS_INFO_THROTTLE(0.3, "APPROACH: quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
+// 			runMethod();
+// 			res.flightCtrlDstx = p_x[40];
+// 			res.flightCtrlDsty = p_y[40];
+// 			res.flightCtrlDstz = p_z[49];
+			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
+			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
+			res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
+			res.flightFlag = 0x90;
+			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
+				res.flightCtrlDstx = tarVx;
+				res.flightCtrlDsty = tarVy;
+				res.flightCtrlDstz = quadrotorPosNED.z;
+				res.flightFlag = 0x50;
+			}
 			break;
 		}
 	}
 	return true;
-
 }
+
+
+void DpTouching::doAvoidance(Eigen::Vector2f attVec)
+{
+	setAttVec(attVec);		//set attractiveVec
+	calcAttractiveForce();	//calc attractive force
+	repulsiveForce.setZero();
+	if(number_obstacle > 0)
+	{
+		calcRepulsiceForce();
+	}
+	ROS_INFO_THROTTLE(0.2,"doAvoidance: repulsiveForce=(%4.2f,%4.2f), attractiveForce=(%4.2f,%4.2f)",repulsiveForce(0),repulsiveForce(1),attractiveForce(0),attractiveForce(1));
+	//joinForce(0) = attractiveForce(0) + repulsiveForce(0);
+	//joinForce(1) = attractiveForce(1) + repulsiveForce(1);
+	joinForce = attractiveForce + repulsiveForce;
+	float theta_tar = atan2(joinForce(1), joinForce(0));
+	tarVx = cos(theta_tar) * avoidanceV;	//NED
+	tarVy = sin(theta_tar) * avoidanceV;
+}
+
+
+void DpTouching::setAttVec(Eigen::Vector2f attVec)
+{
+	attractiveVec(0) = attVec(0);
+	attractiveVec(1) = attVec(1);
+}
+
+void DpTouching::setRepVec(Eigen::Vector2f repVec)
+{
+	repulsiveVec(0) = repVec(0);
+	repulsiveVec(1) = repVec(1);
+}
+
+
+void DpTouching::getForce(Eigen::Vector2f &attForce, Eigen::Vector2f &repForce)
+{
+	attForce(0) = attractiveForce(0);
+	attForce(1) = attractiveForce(1);
+	repForce(0) = repulsiveForce(0);
+	repForce(1) = repulsiveForce(1);
+}
+
+void DpTouching::calcAttractiveForce()
+{
+	float theta_goal = atan2(attractiveVec(1),attractiveVec(0));
+	attractiveForce(0) = fattractive * cos(theta_goal);
+	attractiveForce(1) = fattractive * sin(theta_goal);
+}
+
+void DpTouching::calcRepulsiceForce()
+{
+	repulsiveForce.setZero();
+	if(number_obstacle > 0)
+	{
+		for(int i = 0;i != number_obstacle;i++)
+		{
+			if(obstacle_ranges[i] < 3.0)
+			{
+				iarc_tf::Velocity srv;
+				srv.request.velocityFrame = GROUND;
+				repulsiveVec(0) = obstacle_ranges[i];
+				repulsiveVec(1) = obstacle_angles[i];
+				srv.request.velocityX = Kr/(repulsiveVec(0)*repulsiveVec(0)) * cos(-repulsiveVec(1));           
+				srv.request.velocityY = Kr/(repulsiveVec(0)*repulsiveVec(0)) * sin(-repulsiveVec(1));
+				if(tf_client.call(srv))
+				{
+					repulsiveForce(0) += srv.response.velocityXRes;
+					repulsiveForce(1) += srv.response.velocityYRes;
+				}
+				//ROS_INFO_THROTTLE(0.3,"repulsiveVec=%3.1f,%3.1f,%3.1f,%3.1f,%3.1f",repulsiveVec(0),repulsiveVec(1),Kr/(repulsiveVec(0)*repulsiveVec(0)),repulsiveForce(0),repulsiveForce(1));
+				
+			}
+		}
+	}
+}
+
+
