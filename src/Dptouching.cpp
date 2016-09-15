@@ -229,6 +229,8 @@ void DpTouching::hokuyo_dataCallback(const obstacle_avoidance::Hokuyo::ConstPtr 
 bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
 {
 	ros::spinOnce();
+	float k = 0.8;
+	float tarVz = k * (1.6 - quadrotorPosNED.z);
 	switch(req.quadrotorState)
 	{
 		case CRUISE:
@@ -315,8 +317,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			{
 				res.flightCtrlDstx = srv.response.velocityXRes;
 				res.flightCtrlDsty = srv.response.velocityYRes;
-				res.flightCtrlDstz = tarZ;
-				res.flightFlag = 0x50;
+				res.flightCtrlDstz = tarVz;
+				res.flightFlag = 0x40;
 			}
 			else
 				ROS_ERROR("Dptouching: tf call failed......");
@@ -326,7 +328,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 				doAvoidance(Eigen::Vector2f(res.flightCtrlDstx, res.flightCtrlDsty));
 				res.flightCtrlDstx = tarVx;
 				res.flightCtrlDsty = tarVy;
-				res.flightFlag = 0x50;
+				res.flightCtrlDstz = tarVz;
+				res.flightFlag = 0x40;
 			}
 			
 			break;
