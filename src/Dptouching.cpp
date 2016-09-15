@@ -197,9 +197,9 @@ void DpTouching::initialize()
 	quadrotorPosGround_sub = nh.subscribe("ground_position",10, &DpTouching::quadrotorPosGroundCallback,this);
 	hokuyoBody_sub = nh.subscribe("/hokuyo/obstacle_data",10, &DpTouching::hokuyo_dataCallback, this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
-	avoidanceV = 1.0;
-	if(!nh_param.getParam("Kr", Kr))Kr = 2.25;
-	if(!nh_param.getParam("fattractive", fattractive))fattractive = 2.0;
+	avoidanceV = 0.5;
+	if(!nh_param.getParam("Kr", Kr))Kr = 3.25;
+	if(!nh_param.getParam("fattractive", fattractive))fattractive = 1.0;
 	number_obstacle = 0;
 }
 
@@ -403,7 +403,7 @@ void DpTouching::doAvoidance(Eigen::Vector2f attVec)
 	{
 		calcRepulsiceForce();
 	}
-	ROS_INFO_THROTTLE(0.2,"doAvoidance: repulsiveForce=(%4.2f,%4.2f), attractiveForce=(%4.2f,%4.2f)",repulsiveForce(0),repulsiveForce(1),attractiveForce(0),attractiveForce(1));
+	ROS_INFO_THROTTLE(0.2,"doAvoidance: range=%4.2f,repulsiveForce=(%4.2f,%4.2f), attractiveForce=(%4.2f,%4.2f)",obstacle_ranges[0],repulsiveForce(0),repulsiveForce(1),attractiveForce(0),attractiveForce(1));
 	//joinForce(0) = attractiveForce(0) + repulsiveForce(0);
 	//joinForce(1) = attractiveForce(1) + repulsiveForce(1);
 	joinForce = attractiveForce + repulsiveForce;
@@ -439,6 +439,7 @@ void DpTouching::calcAttractiveForce()
 	float theta_goal = atan2(attractiveVec(1),attractiveVec(0));
 	attractiveForce(0) = fattractive * cos(theta_goal);
 	attractiveForce(1) = fattractive * sin(theta_goal);
+	ROS_ERROR("%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",attractiveVec(0),attractiveVec(1),theta_goal,fattractive,attractiveForce(0),attractiveForce(1));
 }
 
 void DpTouching::calcRepulsiceForce()
