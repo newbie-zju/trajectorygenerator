@@ -233,6 +233,34 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 	float tarVz = k * (1.6 - quadrotorPosNED.z);
 	switch(req.quadrotorState)
 	{
+		case FREE:
+		{
+			tarX = 0.0;
+			tarY = 0.0;
+			tarVx = 0.0;
+			tarVy = 0.0;
+			res.flightCtrlDstx = tarX;
+			res.flightCtrlDsty = tarY;
+			res.flightCtrlDstz = tarVz;
+			res.flightFlag = 0x80;
+			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				repulsiveForce.setZero();
+				calcRepulsiceForce();
+				//ROS_INFO_THROTTLE(0.2,"doAvoidance: range=%4.2f,repulsiveForce=(%4.2f,%4.2f), attractiveForce=(%4.2f,%4.2f)",obstacle_ranges[0],repulsiveForce(0),repulsiveForce(1),attractiveForce(0),attractiveForce(1));
+				//joinForce(0) = attractiveForce(0) + repulsiveForce(0);
+				//joinForce(1) = attractiveForce(1) + repulsiveForce(1);
+				joinForce = repulsiveForce;
+				float theta_tar = atan2(joinForce(1), joinForce(0));
+				tarVx = cos(theta_tar) * avoidanceV;	//NED
+				tarVy = sin(theta_tar) * avoidanceV;
+				res.flightCtrlDstx = tarVx;
+				res.flightCtrlDsty = tarVy;
+				res.flightCtrlDstz = tarVz;
+				res.flightFlag = 0x40;
+			}
+			break;
+		}
 		case CRUISE:
 		{
 			tarZ = 1.6;
@@ -349,17 +377,19 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 // 			res.flightCtrlDstx = p_x[40];
 // 			res.flightCtrlDsty = p_y[40];
 // 			res.flightCtrlDstz = p_z[49];
-			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
-			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
-			res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
+			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x);
+			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y);
+			//res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
+			res.flightCtrlDstz = tarVz;
 			ROS_INFO_THROTTLE(0.2,"TRACK: dp_x=%4.2f,dp_y=%4.2f",res.flightCtrlDstx,res.flightCtrlDsty);
-			res.flightFlag = 0x90;
+			res.flightFlag = 0x80;
 			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
 			{
 				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
 				res.flightCtrlDstx = tarVx;
 				res.flightCtrlDsty = tarVy;
-				res.flightFlag = 0x50;
+				res.flightCtrlDstz = tarVz;
+				res.flightFlag = 0x40;
 			}
 			
 			break;
