@@ -329,13 +329,13 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 					tarVy = 0.2;
 				}
 			}
-			/*
-			//--test-------
-			float theta_quad2center = atan2((0-quadrotorPos.y),(0-quadrotorPos.x));//四旋翼指向场地中心的向量角度
-			tarVx = cos(theta_quad2center) * tarV;
-			tarVy = sin(theta_quad2center) * tarV;
-			//---end--------
-			*/			
+			
+// 			//--test-------
+// 			float theta_quad2center = atan2((0-quadrotorPos.y),(0-quadrotorPos.x));//四旋翼指向场地中心的向量角度
+// 			tarVx = cos(theta_quad2center) * tarV;
+// 			tarVy = sin(theta_quad2center) * tarV;
+// 			//---end--------
+						
 			iarc_tf::Velocity srv;
 			srv.request.velocityFrame = GROUND;
 			srv.request.velocityX = tarVx;
