@@ -263,6 +263,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 		}
 		case CRUISE:
 		{
+			static float lastTarVx = 0;//9.17-2
+			static float lastTarVy = 0;//9.17-2
 			tarZ = 1.6;
 			ROS_INFO_THROTTLE(0.2, "CRUISE:posGround:%4.2f, %4.2f",quadrotorPos.x,quadrotorPos.y);
 
@@ -281,8 +283,20 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
 			tarVx = cos(theta_quad2tar) * tarV;
 			tarVy = sin(theta_quad2tar) * tarV;
-
-
+			//---------9.17-2----------
+			float a_V = 1;
+			float dVx = tarVx - lastTarVx;
+			float dVy = tarVy - lastTarVy;
+			float length_dV = sqrt(dVx*dVx + dVy*dVy);
+			float theta_dV = atan2(dVy,dVx);//dV向量角度
+			tarVx = cos(theta_dV) * min(length_dV,a_V/50) + tarVx;
+			tarVy = sin(theta_dV) * min(length_dV,a_V/50) + tarVy;
+			
+			
+			lastTarVx = tarVx;//9.17-2
+			lastTarVy = tarVy;//9.17-2
+			//---------9.17-2 end----------
+ 
 /*
 			if (!insideRec(quadrotorPos.x,quadrotorPos.y,0.1*xMax,0.1*yMax,0.9*xMax,0.9*yMax))//在(0.1,0.1)(0.9,0.9)矩形外面//A
 			{
@@ -349,12 +363,12 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 				}
 			}*/
 			
-// 			//--test-------
-// 			float theta_quad2center = atan2((0-quadrotorPos.y),(0-quadrotorPos.x));//四旋翼指向场地中心的向量角度
-// 			tarVx = cos(theta_quad2center) * tarV;
-// 			tarVy = sin(theta_quad2center) * tarV;
-// 			//---end--------
-						
+/* 			//--test-------
+ 			float theta_quad2center = atan2((0-quadrotorPos.y),(0-quadrotorPos.x));//四旋翼指向场地中心的向量角度
+ 			tarVx = cos(theta_quad2center) * tarV;
+ 			tarVy = sin(theta_quad2center) * tarV;
+ 			//---end--------
+*/						
 			iarc_tf::Velocity srv;
 			srv.request.velocityFrame = GROUND;
 			srv.request.velocityX = tarVx;
@@ -391,22 +405,22 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 
 			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
 			getTargetPos(tarX,tarY,tarZ);
-			ROS_INFO_THROTTLE(0.2, "TRACK:quadPosNED=%4.2f,%4.2f,%4.2f,tarPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,tarX,tarY,tarZ);
+			ROS_INFO_THROTTLE(0.2, "TRACK:quadPosNED=%4.2f,%4.2f,%4.2f,irobotPosNED=%4.2f,%4.2f,%4.2f",quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z,req.irobotPosNEDx,req.irobotPosNEDy,req.theta);
 // 			runMethod();
 // 			res.flightCtrlDstx = p_x[40];
 // 			res.flightCtrlDsty = p_y[40];
 // 			res.flightCtrlDstz = p_z[49];
-			res.flightCtrlDstx = 0.4*(tarX-quadrotorPosNED.x);
-			res.flightCtrlDsty = 0.4*(tarY-quadrotorPosNED.y);
+			res.flightCtrlDstx = 0.6*(tarX-quadrotorPosNED.x);
+			res.flightCtrlDsty = 0.6*(tarY-quadrotorPosNED.y);
 
-			//-----9.17-------
+/*			//-----9.17-------
 			float maxP = 0.5;
 			float finalP = 0.1;
 			float middleDis = 0.5;
 			float maxDis = 1;
 			float conLength;
 			float theta_quad2tar = atan2((tarY-quadrotorPosNED.y),(tarX-quadrotorPosNED.x));//四旋翼指向目标点的向量角度
-			float dis_quad2tar = sqrt((tarX-quadrotorPosNED.x)*(tarX-quadrotorPosNED.x)+(tarY-quadrotorPosNED.y)*(tarY-quadrotorPosNED.y));
+			float dis_quad2tar = ((tarX-quadrotorPosNED.x)*(tarX-quadrotorPosNED.x)+(tarY-quadrotorPosNED.y)*(tarY-quadrotorPosNED.y));
 			if(dis_quad2tar<middleDis)
 			{
 				conLength = (maxP-finalP)/middleDis * dis_quad2tar + finalP;
@@ -424,6 +438,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			res.flightCtrlDstx = quadrotorPosNED.x + cos(theta_quad2tar)*conLength;
 			res.flightCtrlDsty = quadrotorPosNED.y + sin(theta_quad2tar)*conLength;
 			//------9.17 end ------
+*/
 
 			//res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
 			res.flightCtrlDstz = tarVz;
@@ -454,8 +469,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 // 			res.flightCtrlDstx = p_x[40];
 // 			res.flightCtrlDsty = p_y[40];
 // 			res.flightCtrlDstz = p_z[49];
-			res.flightCtrlDstx = 0.4*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
-			res.flightCtrlDsty = 0.4*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
+			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
+			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
 			res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
 			res.flightFlag = 0x90;
 			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
