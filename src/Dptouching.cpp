@@ -1,5 +1,7 @@
 #include "Dptouching.h"
 #include <math.h>
+// #define max((a),(b)) ((a)>(b)?(a):(b))
+// #define min((a),(b)) ((a)<(b)?(a):(b))
 using namespace std;
 DpTouching::DpTouching(ros::NodeHandle nh_):nh(nh_),nh_param("~")
 {
@@ -198,6 +200,9 @@ void DpTouching::initialize()
 	hokuyoBody_sub = nh.subscribe("/hokuyo/obstacle_data",10, &DpTouching::hokuyo_dataCallback, this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
 	avoidanceV = 0.5;
+	if(!nh_param.getParam("xMax", xMax))xMax = 5.0;
+	if(!nh_param.getParam("yMax", yMax))yMax = 5.0;
+	if(!nh_param.getParam("cruiseVel", tarV))tarV = 0.5;
 	if(!nh_param.getParam("Kr", Kr))Kr = 3.25;
 	if(!nh_param.getParam("fattractive", fattractive))fattractive = 1.0;
 	number_obstacle = 0;
@@ -270,6 +275,11 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 
 			float theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
 			float dtheta = dxy/(0.6/1.732*xMax);
+// FOR 20*20 SIM SUCCESSFULLY			
+			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				dtheta = 5*dxy/(0.6/1.732*xMax);
+			}
 			tarX = cos(theta_center2quad - dtheta) * 0.6/1.732*xMax + 0.5*xMax;
 			tarY = sin(theta_center2quad - dtheta) * 0.6/1.732*yMax + 0.5*yMax;
 			if(tarX > 0.8*xMax)
@@ -280,6 +290,46 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 				tarY = 0.8*yMax;
 			if(tarY < 0.2*yMax)
 				tarY = 0.2*yMax;
+// 			tarX = max(min(tarX,0.8*xMax),0.2*xMax);
+// 			tarY = max(min(tarY,0.8*xMax),0.2*xMax);
+/*			//-----9.18-----
+			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				float verticalPointX = cos(theta_center2quad) * 0.6/1.414*xMax + 0.5*xMax;//9.18
+				float verticalPointY = sin(theta_center2quad) * 0.6/1.414*yMax + 0.5*yMax;//9.18
+// 				verticalPointX = max(min(verticalPointX,0.8*xMax),0.2*xMax);
+// 				verticalPointY = max(min(verticalPointY,0.8*xMax),0.2*xMax);
+				if(verticalPointX > 0.8*xMax)
+					verticalPointX = 0.8*xMax;
+				if(verticalPointX < 0.2*xMax)
+					verticalPointX = 0.2*xMax;
+				if(verticalPointY > 0.8*yMax)
+					verticalPointY = 0.8*yMax;
+				if(verticalPointY < 0.2*yMax)
+					verticalPointY = 0.2*yMax;
+				float parallelPointX = quadrotorPos.x + tarX - verticalPointX;
+				float parallelPointY = quadrotorPos.y + tarY - verticalPointY;
+				tarX = parallelPointX;
+				tarY = parallelPointY;
+			}
+			//-----9.18 end-----
+*/
+			//-----9.18-----
+/*			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			{
+				float verticalPointX = cos(theta_center2quad) * 0.6/1.414*xMax + 0.5*xMax;//9.18
+				float verticalPointY = sin(theta_center2quad) * 0.6/1.414*yMax + 0.5*yMax;//9.18
+				if(verticalPointX > 0.8*xMax)
+					verticalPointX = 0.8*xMax;
+				if(verticalPointX < 0.2*xMax)
+					verticalPointX = 0.2*xMax;
+				if(verticalPointY > 0.8*yMax)
+					verticalPointY = 0.8*yMax;
+				if(verticalPointY < 0.2*yMax)
+					verticalPointY = 0.2*yMax;
+				tarX = 10*(tarX - verticalPointX) + verticalPointX;
+				tarY = 10*(tarY - verticalPointY) + verticalPointY;
+			}*/
 			float theta_quad2tar = atan2((tarY-quadrotorPos.y),(tarX-quadrotorPos.x));//四旋翼指向目标点的向量角度
 			tarVx = cos(theta_quad2tar) * tarV;
 			tarVy = sin(theta_quad2tar) * tarV;
@@ -291,7 +341,6 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			float theta_dV = atan2(dVy,dVx);//dV向量角度
 			tarVx = cos(theta_dV) * min(length_dV,a_V/50) + tarVx;
 			tarVy = sin(theta_dV) * min(length_dV,a_V/50) + tarVy;
-			
 			
 			lastTarVx = tarVx;//9.17-2
 			lastTarVy = tarVy;//9.17-2
@@ -533,7 +582,7 @@ void DpTouching::calcAttractiveForce()
 	float theta_goal = atan2(attractiveVec(1),attractiveVec(0));
 	attractiveForce(0) = fattractive * cos(theta_goal);
 	attractiveForce(1) = fattractive * sin(theta_goal);
-	ROS_ERROR("%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",attractiveVec(0),attractiveVec(1),theta_goal,fattractive,attractiveForce(0),attractiveForce(1));
+	//ROS_ERROR("%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",attractiveVec(0),attractiveVec(1),theta_goal,fattractive,attractiveForce(0),attractiveForce(1));
 }
 
 void DpTouching::calcRepulsiceForce()

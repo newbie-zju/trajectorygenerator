@@ -20,11 +20,8 @@ float irobotDir = 0;//小车方向
 Dp_pos outputPos;//输出位置
 */
 //DPstate quadrotorState = APPROACH;//四旋翼状态
-#define xMax 5.0						//场地范围#8.27
-#define yMax 5.0						//场地范围#8.27
-//xMin 和 yMin 为 0
 #define dxy 0.5				//偏移量#8.28
-#define tarV 0.5			//巡航速度大小#8.28
+//#define tarV 1.0			//巡航速度大小#8.28
 
 
 using namespace cv;
@@ -67,6 +64,9 @@ public:
 	dji_sdk::LocalPosition quadrotorPos;
 	goal_detected::Pose3D irobotPos;
 	geometry_msgs::Point32 outputPos;
+	double xMax;
+	double yMax;
+	double tarV;
 	float tarX;
 	float tarY;
 	float tarZ;
