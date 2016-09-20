@@ -197,7 +197,7 @@ void DpTouching::initialize()
 	TG_server = nh.advertiseService("/TG/TG_service", &DpTouching::calculateTrajectoryCallback, this);
 	quadrotorPosNED_sub = nh.subscribe("/dji_sdk/local_position", 10, &DpTouching::quadrotorPosNEDCallback, this);
 	quadrotorPosGround_sub = nh.subscribe("ground_position",10, &DpTouching::quadrotorPosGroundCallback,this);
-	hokuyoBody_sub = nh.subscribe("/hokuyo/obstacle_data",10, &DpTouching::hokuyo_dataCallback, this);
+	hokuyoBody_sub = nh.subscribe("/hokuyo/pillar_data",10, &DpTouching::hokuyo_dataCallback, this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
 	avoidanceV = 0.5;
 	if(!nh_param.getParam("xMax", xMax))xMax = 5.0;
@@ -520,7 +520,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 // 			res.flightCtrlDstz = p_z[49];
 			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
 			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
-			res.flightCtrlDstz = 1.0*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
+			res.flightCtrlDstz = 1.2*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
 			res.flightFlag = 0x90;
 			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
 			{
@@ -546,7 +546,7 @@ void DpTouching::doAvoidance(Eigen::Vector2f attVec)
 	{
 		calcRepulsiceForce();
 	}
-	ROS_INFO_THROTTLE(0.2,"doAvoidance: range=%4.2f,repulsiveForce=(%4.2f,%4.2f), attractiveForce=(%4.2f,%4.2f)",obstacle_ranges[0],repulsiveForce(0),repulsiveForce(1),attractiveForce(0),attractiveForce(1));
+	ROS_INFO_THROTTLE(0.2,"doAvoidance: range=%4.2f,ang=%4.2f,repulsiveForce=(%4.2f,%4.2f), attractiveForce=(%4.2f,%4.2f)",obstacle_ranges[0],obstacle_angles[0],repulsiveForce(0),repulsiveForce(1),attractiveForce(0),attractiveForce(1));
 	//joinForce(0) = attractiveForce(0) + repulsiveForce(0);
 	//joinForce(1) = attractiveForce(1) + repulsiveForce(1);
 	joinForce = attractiveForce + repulsiveForce;
