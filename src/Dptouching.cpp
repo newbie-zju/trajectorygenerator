@@ -516,8 +516,8 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 		case APPROACH:
 		{
 			//ROS_INFO("DpTouching: APPROACH");
-			tarX = req.irobotPosNEDx + 2.3 * cos(req.theta);
-			tarY = req.irobotPosNEDy + 2.3 * sin(req.theta);
+			tarX = req.irobotPosNEDx + 2.0 * cos(req.theta);
+			tarY = req.irobotPosNEDy + 2.0 * sin(req.theta);
 			tarZ = -0.5;
 
 			getBeginPos(quadrotorPosNED.x,quadrotorPosNED.y,quadrotorPosNED.z);
@@ -527,10 +527,11 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 // 			res.flightCtrlDstx = p_x[40];
 // 			res.flightCtrlDsty = p_y[40];
 // 			res.flightCtrlDstz = p_z[49];
-			res.flightCtrlDstx = 0.8*(tarX-quadrotorPosNED.x)+quadrotorPosNED.x;
-			res.flightCtrlDsty = 0.8*(tarY-quadrotorPosNED.y)+quadrotorPosNED.y;
-			res.flightCtrlDstz = 1.2*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
-			res.flightFlag = 0x90;
+			res.flightCtrlDstx = 0.7*(tarX-quadrotorPosNED.x);//+quadrotorPosNED.x;
+			res.flightCtrlDsty = 0.7*(tarY-quadrotorPosNED.y);//+quadrotorPosNED.y;
+			//res.flightCtrlDstz = 1.2*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
+			res.flightCtrlDstz = -0.6;
+			res.flightFlag = 0x80; 
 			if(guidance_emergency == true ||((number_obstacle > 0) && (obstacle_ranges[0] < 3.0)))
 			{
 				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
