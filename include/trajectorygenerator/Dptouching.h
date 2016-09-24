@@ -75,7 +75,11 @@ public:
 	float tarVy;
 	float tarX_ob;
 	float tarY_ob;
+	float guidancerang;
+	float obstcleNEDx;
+	float obstcleNEDy;
 	bool guidance_emergency;
+	bool hokuyo_emergency;
 	enum VelState{NED,GROUND};
 	ros::NodeHandle nh;
 	ros::NodeHandle nh_param;
@@ -111,7 +115,7 @@ private:
 public:
 	int number_obstacle;   
 	double Kr;
-	float avoidanceV;
+	double avoidanceV;
 	double fattractive;
 	float obstacle_ranges[5] = {0.0,0.0,0.0,0.0,0.0};
 	float obstacle_angles[5] = {0.0,0.0,0.0,0.0,0.0};

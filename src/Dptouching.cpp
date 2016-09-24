@@ -200,10 +200,11 @@ void DpTouching::initialize()
 	hokuyoBody_sub = nh.subscribe("/hokuyo/pillar_data",10, &DpTouching::hokuyo_dataCallback, this);
 	tf_client = nh.serviceClient<iarc_tf::Velocity>("ned_world_velocity_transform_srvice");
 	guidance_distance_sub = nh.subscribe("/guidance/ultrasonic", 1, &DpTouching::guidanceObstacleCallback, this);
-	avoidanceV = 0.5;
 	guidance_emergency = false;
+	hokuyo_emergency =false;
 	if(!nh_param.getParam("xMax", xMax))xMax = 5.0;
 	if(!nh_param.getParam("yMax", yMax))yMax = 5.0;
+	if(!nh_param.getParam("avoidanceV", avoidanceV))avoidanceV = 0.6;
 	if(!nh_param.getParam("cruiseVel", tarV))tarV = 0.5;
 	if(!nh_param.getParam("Kr", Kr))Kr = 3.25;
 	if(!nh_param.getParam("fattractive", fattractive))fattractive = 1.0;
@@ -235,10 +236,17 @@ void DpTouching::hokuyo_dataCallback(const obstacle_avoidance::Hokuyo::ConstPtr 
 }
 void DpTouching::guidanceObstacleCallback(const sensor_msgs::LaserScanConstPtr& msg)
 {
-	if ((msg->intensities[1] > 0.0) && (msg->ranges[1] < 2) && (msg->ranges[1] > 0.5))
+	if ((msg->intensities[1] > 0.0) && (msg->ranges[1] < 2.5) && (msg->ranges[1] > 0.5))
+	{
+		guidancerang = msg->ranges[1];
 		guidance_emergency = true;
+		
+	}
 	else
+	{
 		guidance_emergency = false;
+		guidancerang =999;
+	}
 }
 bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iarc_mission::TG::Response &res)
 {
@@ -257,7 +265,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			res.flightCtrlDsty = tarY;
 			res.flightCtrlDstz = tarVz;
 			res.flightFlag = 0x80;
-			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			if(((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))|| guidance_emergency)
 			{
 				repulsiveForce.setZero();
 				calcRepulsiceForce();
@@ -283,7 +291,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			ROS_INFO_THROTTLE(0.2, "CRUISE:posGround:%4.2f, %4.2f",quadrotorPos.x,quadrotorPos.y);
 
 			float theta_center2quad = atan2((quadrotorPos.y-yMax/2),(quadrotorPos.x-xMax/2));//场地中心指向四旋翼的向量角度
-			float dtheta = dxy/(0.6/1.732*xMax);
+			float dtheta = 5*dxy/(0.6/1.732*xMax);
 // FOR 20*20 SIM SUCCESSFULLY			
 			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
 			{
@@ -442,7 +450,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			else
 				ROS_ERROR("Dptouching: tf call failed......");
 			// has NED track vec, then if has obstacle:
-			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			if(((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))||guidance_emergency)
 			{
 				doAvoidance(Eigen::Vector2f(res.flightCtrlDstx, res.flightCtrlDsty));
 				res.flightCtrlDstx = tarVx;
@@ -502,7 +510,7 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			res.flightCtrlDstz = tarVz;
 			ROS_INFO_THROTTLE(0.2,"TRACK: dp_x=%4.2f,dp_y=%4.2f",res.flightCtrlDstx,res.flightCtrlDsty);
 			res.flightFlag = 0x80;
-			if((number_obstacle > 0) && (obstacle_ranges[0] < 3.0))
+			if(((number_obstacle > 0) && (obstacle_ranges[0] < 3.0)) || guidance_emergency)
 			{
 				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
 				res.flightCtrlDstx = tarVx;
@@ -532,7 +540,40 @@ bool DpTouching::calculateTrajectoryCallback(iarc_mission::TG::Request &req, iar
 			//res.flightCtrlDstz = 1.2*(tarZ-quadrotorPosNED.z)+quadrotorPosNED.z;
 			res.flightCtrlDstz = -0.6;
 			res.flightFlag = 0x80; 
-			if(guidance_emergency == true ||((number_obstacle > 0) && (obstacle_ranges[0] < 3.0)))
+		
+			if(number_obstacle > 0)
+			{
+				for(int i = 0;i != number_obstacle; i++)
+				{
+					if(obstacle_ranges[i] < 3.0)
+					{
+						iarc_tf::Velocity srv;
+						srv.request.velocityFrame = GROUND;
+						repulsiveVec(0) = obstacle_ranges[i];
+						repulsiveVec(1) = obstacle_angles[i];
+						srv.request.velocityX = -obstacle_ranges[i] * cos(-repulsiveVec(1));           
+						srv.request.velocityY = -obstacle_ranges[i] * sin(-repulsiveVec(1));
+						if(tf_client.call(srv))
+						{
+							//repulsiveForce(0) += srv.response.velocityXRes;
+							//repulsiveForce(1) += srv.response.velocityYRes;
+							obstcleNEDx = srv.response.velocityXRes + quadrotorPosNED.x;
+							obstcleNEDy = srv.response.velocityYRes + quadrotorPosNED.y;
+							float dis_obstacle_tar = sqrt((obstcleNEDx-tarX)*(obstcleNEDx-tarX)+(obstcleNEDy-tarY)*(obstcleNEDy-tarY));
+							if(dis_obstacle_tar<2.5)
+							{
+								hokuyo_emergency = true;
+								break;
+							}
+							else
+								hokuyo_emergency = false;
+						}
+					}
+				}
+			}
+			else
+				hokuyo_emergency =false;
+			if(guidance_emergency == true || hokuyo_emergency == true)
 			{
 				doAvoidance(Eigen::Vector2f(tarX - quadrotorPosNED.x, tarY - quadrotorPosNED.y));
 				res.flightCtrlDstx = tarVx;
@@ -552,7 +593,7 @@ void DpTouching::doAvoidance(Eigen::Vector2f attVec)
 	setAttVec(attVec);		//set attractiveVec
 	calcAttractiveForce();	//calc attractive force
 	repulsiveForce.setZero();
-	if(number_obstacle > 0)
+	if(number_obstacle > 0 || guidance_emergency)
 	{
 		calcRepulsiceForce();
 	}
@@ -618,6 +659,18 @@ void DpTouching::calcRepulsiceForce()
 				//ROS_INFO_THROTTLE(0.3,"repulsiveVec=%3.1f,%3.1f,%3.1f,%3.1f,%3.1f",repulsiveVec(0),repulsiveVec(1),Kr/(repulsiveVec(0)*repulsiveVec(0)),repulsiveForce(0),repulsiveForce(1));
 				
 			}
+		}
+	}
+	if(guidance_emergency)
+	{
+		iarc_tf::Velocity srv;
+		srv.request.velocityFrame = GROUND;
+		srv.request.velocityX = -6.5/guidancerang*guidancerang;          
+		srv.request.velocityY = 0;
+		if(tf_client.call(srv))
+		{
+			repulsiveForce(0) += srv.response.velocityXRes;
+			repulsiveForce(1) += srv.response.velocityYRes;
 		}
 	}
 }
